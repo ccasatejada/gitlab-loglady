@@ -1,0 +1,180 @@
+stages:
+  - generate
+  - publish
+
+variables:
+  PYTHON_VERSION: "3.9"
+  # GITLAB_URL: Settings > CI/CD > Variables
+  # GITLAB_TOKEN: Settings > CI/CD > Variables
+  # GITLAB_GROUP_ID: Settings > CI/CD > Variables
+  # SLACK_WEBHOOK_URL: Settings > CI/CD > Variables
+  # SLACK_CHANNEL: Settings > CI/CD > Variables
+
+generate_changelog:
+  stage: generate
+  image: python:${PYTHON_VERSION}-slim
+  before_script:
+    - pip install --no-cache-dir -r requirements.txt
+  script:
+    - |
+      echo "Generating changelog for milestone: ${MILESTONE_NAME}"
+      
+      # Vérifier que les variables sont définies
+      if [ -z "$GITLAB_TOKEN" ]; then
+        echo "Error: GITLAB_TOKEN not set"
+        exit 1
+      fi
+      
+      if [ -z "$MILESTONE_NAME" ]; then
+        echo "Error: MILESTONE_NAME not set. Please set it as a pipeline variable."
+        exit 1
+      fi
+      
+      # Générer le changelog (sans publier)
+      python generate_changelog.py \
+        --milestone "${MILESTONE_NAME}" \
+        --output changelog.md \
+        --dry-run
+      
+      echo "Changelog generated successfully!"
+      cat changelog.md
+  artifacts:
+    paths:
+      - changelog.md
+    expire_in: 1 week
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: manual
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"'
+      when: manual
+
+publish_to_slack:
+  stage: publish
+  image: python:${PYTHON_VERSION}-slim
+  dependencies:
+    - generate_changelog
+  before_script:
+    - pip install --no-cache-dir -r requirements.txt
+  script:
+    - |
+      echo "Publishing changelog to Slack channel: ${SLACK_CHANNEL}"
+      
+      # exists
+      if [ ! -f changelog.md ]; then
+        echo "Error: changelog.md not found"
+        exit 1
+      fi
+      
+      # publish
+      python generate_changelog.py \
+        --milestone "${MILESTONE_NAME}" \
+        --output changelog.md \
+        --publish-only
+      
+      echo "Changelog published to Slack!"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: manual
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"'
+      when: manual
+
+generate_and_publish:
+  stage: generate
+  image: python:${PYTHON_VERSION}-slim
+  before_script:
+    - pip install --no-cache-dir -r requirements.txt
+    - |
+      # display infos
+      echo "GitLab URL: ${GITLAB_URL}"
+      echo "Group ID: ${GITLAB_GROUP_ID}"
+      echo "Slack Channel: ${SLACK_CHANNEL}"
+      echo "Milestone: ${MILESTONE_NAME}"
+  script:
+    - |
+      echo "Generating and publishing changelog for milestone: ${MILESTONE_NAME}"
+      
+      # tryout
+      if [ -z "$GITLAB_TOKEN" ]; then
+        echo "Error: GITLAB_TOKEN not set in CI/CD variables"
+        exit 1
+      fi
+      
+      if [ -z "$SLACK_WEBHOOK_URL" ]; then
+        echo "Error: SLACK_WEBHOOK_URL not set in CI/CD variables"
+        exit 1
+      fi
+      
+      if [ -z "$MILESTONE_NAME" ]; then
+        echo "Error: MILESTONE_NAME not set. Please provide it when running the pipeline."
+        exit 1
+      fi
+      
+      # generate and publish
+      python generate_changelog.py \
+        --milestone "${MILESTONE_NAME}" \
+        --output changelog.md
+      
+      echo "✅ Changelog generated and published successfully!"
+  artifacts:
+    paths:
+      - changelog.md
+    expire_in: 1 week
+    when: always
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: manual
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"'
+      when: manual
+
+update_changelog_file:
+  stage: publish
+  image: python:${PYTHON_VERSION}-slim
+  before_script:
+    - pip install --no-cache-dir -r requirements.txt
+    - |
+      # configure git to commit
+      git config --global user.email "{gitlab-email}"
+      git config --global user.name "GitLab CI"
+  script:
+    - |
+      echo "Updating persistent CHANGELOG.md for milestone: ${MILESTONE_NAME}"
+      
+      # generate and add to CHANGELOG.md
+      python generate_changelog.py \
+        --milestone "${MILESTONE_NAME}" \
+        --append-to-changelog \
+        --changelog-file CHANGELOG.md \
+        --archive-dir changelog_archive
+      
+      # commit and push
+      git add CHANGELOG.md changelog_archive/
+      git commit -m "Update CHANGELOG.md for milestone ${MILESTONE_NAME}" || echo "No changes to commit"
+      git push https://oauth2:${GITLAB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git HEAD:${CI_COMMIT_BRANCH}
+      
+      echo "✅ CHANGELOG.md updated!"
+  artifacts:
+    paths:
+      - CHANGELOG.md
+      - changelog_archive/
+    expire_in: 1 week
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: manual
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"'
+      when: manual
+  allow_failure: true
+
+test_configuration:
+  stage: generate
+  image: python:${PYTHON_VERSION}-slim
+  before_script:
+    - pip install --no-cache-dir -r requirements.txt
+  script:
+    - |
+      echo "Testing GitLab connection..."
+      python -c "import os; import sys; sys.path.insert(0, 'src'); from gitlab_client import GitLabClient; client = GitLabClient(url=os.environ['GITLAB_URL'], token=os.environ['GITLAB_TOKEN'], group_id=os.environ['GITLAB_GROUP_ID']); print('✅ GitLab connection successful!' if client.test_connection() else '❌ GitLab connection failed!'); projects = client.get_projects_in_group(); print(f'Found {len(projects)} projects in the group'); [print(f'  - {p.name}') for p in projects[:5]]"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: manual
+    - if: '$CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"'
+      when: manual

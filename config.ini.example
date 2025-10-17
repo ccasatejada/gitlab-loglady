@@ -1,0 +1,14 @@
+[gitlab]
+url = https://{gitlab-url}
+token = YOUR_GITLAB_TOKEN_HERE
+group_id = {group-id}
+
+[slack]
+webhook_url = YOUR_SLACK_WEBHOOK_URL
+channel = #changelog
+
+# Repository mapping: Map products to their GitLab repository URLs
+[repositories]
+Product1 = https://{gitlab-url}/{group-name}/{repository-name1}, https://{gitlab-url}/{group-name}/{repository-name2},
+Product2 = https://{gitlab-url}/{group-name}/{repository-name3}
+Product3 = https://{gitlab-url}/{group-name}/{repository-name4}, https://{gitlab-url}/{group-name}/{repository-name5}, https://{gitlab-url}/{group-name}/{repository-name6},
