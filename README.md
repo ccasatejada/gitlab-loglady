@@ -18,7 +18,7 @@ Gitlab LogLady automates the process of generating changelogs from GitLab group 
 
 1. Clone the repository:
 ```bash
-cd /home/clementdebian/dev/loglady
+cd /path/to/local_repository
 ```
 
 2. Create and activate virtual environment:
