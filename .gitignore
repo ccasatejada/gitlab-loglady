@@ -1,4 +1,8 @@
 config.ini
+.env
+.idea
+.python-version
+pyvenv.cfg
 venv/
 bin/
 lib/
@@ -16,4 +20,3 @@ build/
 .coverage
 htmlcov/
 .pytest_cache/
-.env

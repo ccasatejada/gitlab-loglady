@@ -5,26 +5,18 @@ from collections import defaultdict
 from datetime import datetime
 from typing import List, Dict
 
+from src import config
+
 
 class ChangelogGenerator:
     """Generates formatted changelogs from GitLab issue data."""
 
-    def __init__(self, repository_mapping: Dict[str, List[str]]):
+    def __init__(self, repos_to_products: Dict[str, str]):
         """
         Initialize changelog generator.
-
-        Args:
-            repository_mapping: Dictionary mapping product names to repository URLs
         """
-        self.repository_mapping = repository_mapping
-
         # Create reverse mapping for repository to product
-        self.repo_to_product = {}
-        for product, repos in self.repository_mapping.items():
-            for repo in repos:
-                # Normalize repository URL
-                repo_normalized = repo.strip().rstrip('/')
-                self.repo_to_product[repo_normalized] = product
+        self.repos_to_products = repos_to_products
 
     def group_issues_by_product(self, issues: List[Dict]) -> Dict[str, List[Dict]]:
         """
@@ -39,20 +31,13 @@ class ChangelogGenerator:
         grouped = defaultdict(list)
 
         for issue in issues:
-            product_found = False
-
-            # Match by repository URL
-            if 'project_url' in issue:
-                project_url = issue['project_url'].rstrip('/')
-                if project_url in self.repo_to_product:
-                    product = self.repo_to_product[project_url]
-                    grouped[product].append(issue)
-                    product_found = True
-
-            # If no repository match found, add to Uncategorized
-            if not product_found:
+            project_url = issue['project_url']
+            product = self.repos_to_products.get(project_url)
+            if not product:
+                # If no repository match found, add to Uncategorized
                 grouped['Uncategorized'].append(issue)
-
+                continue
+            grouped[product].append(issue)
         return dict(grouped)
 
     def format_issue_line(self, issue: Dict) -> str:
